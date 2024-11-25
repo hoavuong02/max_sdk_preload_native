@@ -14,6 +14,9 @@ import android.view.ViewParent;
 import android.widget.LinearLayout;
 import android.widget.RelativeLayout;
 
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+
 import com.applovin.mediation.MaxAd;
 import com.applovin.mediation.MaxAdFormat;
 import com.applovin.mediation.MaxAdListener;
@@ -32,6 +35,7 @@ import com.applovin.mediation.ads.MaxAdView;
 import com.applovin.mediation.ads.MaxAppOpenAd;
 import com.applovin.mediation.ads.MaxInterstitialAd;
 import com.applovin.mediation.ads.MaxRewardedAd;
+import com.applovin.mediation.nativeAds.MaxNativeAd;
 import com.applovin.mediation.nativeAds.MaxNativeAdListener;
 import com.applovin.mediation.nativeAds.MaxNativeAdLoader;
 import com.applovin.mediation.nativeAds.MaxNativeAdView;
@@ -51,9 +55,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
-
 import io.flutter.embedding.engine.plugins.FlutterPlugin;
 import io.flutter.embedding.engine.plugins.activity.ActivityAware;
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding;
@@ -62,46 +63,114 @@ import io.flutter.plugin.common.MethodChannel;
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler;
 import io.flutter.plugin.common.MethodChannel.Result;
 
-public class AppLovinMAX
-        implements FlutterPlugin, MethodCallHandler, ActivityAware, MaxAdListener, MaxAdViewAdListener, MaxRewardedAdListener, MaxAdRevenueListener {
+public class AppLovinMAX implements FlutterPlugin, MethodCallHandler, ActivityAware, MaxAdListener, MaxAdViewAdListener, MaxRewardedAdListener, MaxAdRevenueListener {
     private static final String SDK_TAG = "AppLovinSdk";
-    private static final String TAG = "AppLovinMAX";
+    public static final String TAG = "AppLovinMAX";
 
     private static final String USER_GEOGRAPHY_GDPR = "G";
     private static final String USER_GEOGRAPHY_OTHER = "O";
     private static final String USER_GEOGRAPHY_UNKNOWN = "U";
 
     public static AppLovinMAX instance;
-
-    private MethodChannel sharedChannel;
-    private Context applicationContext;
-    private ActivityPluginBinding lastActivityPluginBinding;
-
-    // Parent Fields
-    private AppLovinSdk sdk;
-    private boolean isPluginInitialized;
-    private boolean isSdkInitialized;
-    private AppLovinSdkConfiguration sdkConfiguration;
-
-    // Store these values if pub attempts to set it before initializing
-    private List<String> initializationAdUnitIdsToSet;
-    private List<String> testDeviceAdvertisingIdsToSet;
+    @Nullable
+    static public MaxNativeAdLoader adLoader;
+    @Nullable
+    static public MaxAd nativeAd;
+    static public String adPlacement;
+    static NativeAdManager nativeAdManager = new NativeAdManager();
     private final MaxSegmentCollection.Builder segmentCollectionBuilder = MaxSegmentCollection.builder();
-
     // Fullscreen Ad Fields
     private final Map<String, MaxInterstitialAd> mInterstitials = new HashMap<>(2);
     private final Map<String, MaxRewardedAd> mRewardedAds = new HashMap<>(2);
     private final Map<String, MaxAppOpenAd> mAppOpenAds = new HashMap<>(2);
-
     // AdView Fields
     private final Map<String, MaxAdView> mAdViews = new HashMap<>(2);
     private final Map<String, MaxAdFormat> mAdViewAdFormats = new HashMap<>(2);
     private final Map<String, String> mAdViewPositions = new HashMap<>(2);
     private final List<String> mAdUnitIdsToShowAfterCreate = new ArrayList<>(2);
     private final Set<String> mDisabledAutoRefreshAdViewAdUnitIds = new HashSet<>(2);
+    private MethodChannel sharedChannel;
+    private Context applicationContext;
+    private ActivityPluginBinding lastActivityPluginBinding;
+    // Parent Fields
+    private AppLovinSdk sdk;
+    private boolean isPluginInitialized;
+    private boolean isSdkInitialized;
+    private AppLovinSdkConfiguration sdkConfiguration;
+    // Store these values if pub attempts to set it before initializing
+    private List<String> initializationAdUnitIdsToSet;
+    private List<String> testDeviceAdvertisingIdsToSet;
 
     public static AppLovinMAX getInstance() {
         return instance;
+    }
+
+    private static void logUninitializedAccessError(final String callingMethod) {
+        logUninitializedAccessError(callingMethod, null);
+    }
+
+    private static void logUninitializedAccessError(final String callingMethod, @Nullable final Result result) {
+        final String message = "ERROR: Failed to execute " + callingMethod + "() - please ensure the AppLovin MAX Flutter plugin has been initialized by calling 'AppLovinMAX.initialize(...);'!";
+
+        if (result == null) {
+            e(message);
+            return;
+        }
+
+        result.error(TAG, message, null);
+    }
+
+    public static void d(final String message) {
+        final String fullMessage = "[" + TAG + "] " + message;
+        Log.d(SDK_TAG, fullMessage);
+    }
+
+    // General Public API
+
+    public static void w(final String message) {
+        final String fullMessage = "[" + TAG + "] " + message;
+        Log.w(SDK_TAG, fullMessage);
+    }
+
+    public static void e(final String message) {
+        final String fullMessage = "[" + TAG + "] " + message;
+        Log.e(SDK_TAG, fullMessage);
+    }
+
+    public static MaxAdFormat getDeviceSpecificBannerAdViewAdFormat(final Context context) {
+        return AppLovinSdkUtils.isTablet(context) ? MaxAdFormat.LEADER : MaxAdFormat.BANNER;
+    }
+
+    private static AdViewSize getAdViewSize(final MaxAdFormat format) {
+        if (MaxAdFormat.LEADER == format) {
+            return new AdViewSize(728, 90);
+        } else if (MaxAdFormat.BANNER == format) {
+            return new AdViewSize(320, 50);
+        } else if (MaxAdFormat.MREC == format) {
+            return new AdViewSize(300, 250);
+        } else {
+            throw new IllegalArgumentException("Invalid ad format");
+        }
+    }
+
+    private static ConsentFlowUserGeography getAppLovinConsentFlowUserGeography(final String userGeography) {
+        if (USER_GEOGRAPHY_GDPR.equalsIgnoreCase(userGeography)) {
+            return ConsentFlowUserGeography.GDPR;
+        } else if (USER_GEOGRAPHY_OTHER.equalsIgnoreCase(userGeography)) {
+            return ConsentFlowUserGeography.OTHER;
+        }
+
+        return ConsentFlowUserGeography.UNKNOWN;
+    }
+
+    private static String getRawAppLovinConsentFlowUserGeography(final ConsentFlowUserGeography userGeography) {
+        if (ConsentFlowUserGeography.GDPR == userGeography) {
+            return USER_GEOGRAPHY_GDPR;
+        } else if (ConsentFlowUserGeography.OTHER == userGeography) {
+            return USER_GEOGRAPHY_OTHER;
+        }
+
+        return USER_GEOGRAPHY_UNKNOWN;
     }
 
     public AppLovinSdk getSdk() {
@@ -199,8 +268,6 @@ public class AppLovinMAX
         return message;
     }
 
-    // General Public API
-
     public void isTablet(final Result result) {
         result.success(AppLovinSdkUtils.isTablet(applicationContext));
     }
@@ -214,20 +281,14 @@ public class AppLovinMAX
         sdk.showMediationDebugger();
     }
 
+    // MAX Terms and Privacy Policy Flow
+
     public void setHasUserConsent(boolean hasUserConsent) {
         AppLovinPrivacySettings.setHasUserConsent(hasUserConsent, applicationContext);
     }
 
     public void hasUserConsent(final Result result) {
         result.success(AppLovinPrivacySettings.hasUserConsent(applicationContext));
-    }
-
-    public void setIsAgeRestrictedUser(boolean isAgeRestrictedUser) {
-        AppLovinPrivacySettings.setIsAgeRestrictedUser(isAgeRestrictedUser, applicationContext);
-    }
-
-    public void isAgeRestrictedUser(final Result result) {
-        result.success(AppLovinPrivacySettings.isAgeRestrictedUser(applicationContext));
     }
 
     public void setDoNotSell(final boolean doNotSell) {
@@ -238,6 +299,8 @@ public class AppLovinMAX
         result.success(AppLovinPrivacySettings.isDoNotSell(applicationContext));
     }
 
+    // Segment Targeting
+
     public void setUserId(String userId) {
         sdk.getSettings().setUserIdentifier(userId);
     }
@@ -245,6 +308,8 @@ public class AppLovinMAX
     public void setMuted(final boolean muted) {
         sdk.getSettings().setMuted(muted);
     }
+
+    // BANNERS
 
     public void setVerboseLogging(final boolean enabled) {
         sdk.getSettings().setVerboseLogging(enabled);
@@ -270,8 +335,6 @@ public class AppLovinMAX
     public void setInitializationAdUnitIds(final List<String> rawAdUnitIds) {
         initializationAdUnitIdsToSet = new ArrayList<>(rawAdUnitIds);
     }
-
-    // MAX Terms and Privacy Policy Flow
 
     public void setTermsAndPrivacyPolicyFlowEnabled(final boolean enabled) {
         sdk.getSettings().getTermsAndPrivacyPolicyFlowSettings().setEnabled(enabled);
@@ -320,8 +383,6 @@ public class AppLovinMAX
         result.success(sdk.getCmpService().hasSupportedCmp());
     }
 
-    // Segment Targeting
-
     public void addSegment(final Integer key, final List<Integer> values) {
         if (isPluginInitialized) {
             e("A segment must be added before calling 'AppLovinMAX.initialize(...);'");
@@ -330,6 +391,8 @@ public class AppLovinMAX
 
         segmentCollectionBuilder.addSegment(new MaxSegment(key, values));
     }
+
+    // MRECS
 
     public void getSegments(final Result result) {
         if (!isSdkInitialized) {
@@ -352,8 +415,6 @@ public class AppLovinMAX
 
         result.success(map);
     }
-
-    // BANNERS
 
     public void createBanner(final String adUnitId, final String bannerPosition) {
         createAdView(adUnitId, getDeviceSpecificBannerAdViewAdFormat(), bannerPosition);
@@ -391,6 +452,8 @@ public class AppLovinMAX
         startAdViewAutoRefresh(adUnitId, getDeviceSpecificBannerAdViewAdFormat());
     }
 
+    // INTERSTITIALS
+
     public void stopBannerAutoRefresh(final String adUnitId) {
         stopAdViewAutoRefresh(adUnitId, getDeviceSpecificBannerAdViewAdFormat());
     }
@@ -403,11 +466,11 @@ public class AppLovinMAX
         result.success((double) getDeviceSpecificBannerAdViewAdFormat().getAdaptiveSize((int) width, applicationContext).getHeight());
     }
 
-    // MRECS
-
     public void createMRec(final String adUnitId, final String mrecPosition) {
         createAdView(adUnitId, MaxAdFormat.MREC, mrecPosition);
     }
+
+    // REWARDED
 
     public void setMRecPlacement(final String adUnitId, final String placement) {
         setAdViewPlacement(adUnitId, MaxAdFormat.MREC, placement);
@@ -425,6 +488,8 @@ public class AppLovinMAX
         showAdView(adUnitId, MaxAdFormat.MREC);
     }
 
+    // APP OPEN AD
+
     public void hideMRec(final String adUnitId) {
         hideAdView(adUnitId, MaxAdFormat.MREC);
     }
@@ -441,11 +506,11 @@ public class AppLovinMAX
         stopAdViewAutoRefresh(adUnitId, MaxAdFormat.MREC);
     }
 
+    // AD CALLBACKS
+
     public void destroyMRec(final String adUnitId) {
         destroyAdView(adUnitId, MaxAdFormat.MREC);
     }
-
-    // INTERSTITIALS
 
     public void loadInterstitial(final String adUnitId) {
         MaxInterstitialAd interstitial = retrieveInterstitial(adUnitId);
@@ -467,8 +532,6 @@ public class AppLovinMAX
         interstitial.setExtraParameter(key, value);
     }
 
-    // REWARDED
-
     public void loadRewardedAd(final String adUnitId) {
         MaxRewardedAd rewardedAd = retrieveRewardedAd(adUnitId);
         rewardedAd.loadAd();
@@ -489,8 +552,6 @@ public class AppLovinMAX
         rewardedAd.setExtraParameter(key, value);
     }
 
-    // APP OPEN AD
-
     public void loadAppOpenAd(final String adUnitId) {
         MaxAppOpenAd appOpenAd = retrieveAppOpenAd(adUnitId);
         appOpenAd.loadAd();
@@ -506,12 +567,12 @@ public class AppLovinMAX
         appOpenAd.showAd(placement, customData);
     }
 
+    // INTERNAL METHODS
+
     public void setAppOpenAdExtraParameter(final String adUnitId, final String key, final String value) {
         MaxAppOpenAd appOpenAd = retrieveAppOpenAd(adUnitId);
         appOpenAd.setExtraParameter(key, value);
     }
-
-    // AD CALLBACKS
 
     @Override
     public void onAdLoaded(MaxAd ad) {
@@ -697,16 +758,6 @@ public class AppLovinMAX
     }
 
     @Override
-    public void onRewardedVideoCompleted(@NonNull final MaxAd ad) {
-        // This event is not forwarded
-    }
-
-    @Override
-    public void onRewardedVideoStarted(@NonNull final MaxAd ad) {
-        // This event is not forwarded
-    }
-
-    @Override
     public void onUserRewarded(final MaxAd ad, @NonNull final MaxReward reward) {
         final MaxAdFormat adFormat = ad.getFormat();
         if (adFormat != MaxAdFormat.REWARDED) {
@@ -726,8 +777,6 @@ public class AppLovinMAX
         }
     }
 
-    // INTERNAL METHODS
-
     private void createAdView(final String adUnitId, final MaxAdFormat adFormat, final String adViewPosition) {
         d("Creating " + adFormat.getLabel() + " with ad unit id \"" + adUnitId + "\" and position: \"" + adViewPosition + "\"");
 
@@ -743,8 +792,7 @@ public class AppLovinMAX
         if (adView.getParent() == null) {
             final Activity currentActivity = getCurrentActivity();
             final RelativeLayout relativeLayout = new RelativeLayout(currentActivity);
-            currentActivity.addContentView(relativeLayout, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.MATCH_PARENT));
+            currentActivity.addContentView(relativeLayout, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT));
             relativeLayout.addView(adView);
 
             // Position ad view immediately so if publisher sets color before ad loads, it will not be the size of the screen
@@ -766,7 +814,8 @@ public class AppLovinMAX
         }
     }
 
-    private void loadAdView(final String adUnitId, final MaxAdFormat adFormat) {
+    private void
+    loadAdView(final String adUnitId, final MaxAdFormat adFormat) {
         MaxAdView adView = retrieveAdView(adUnitId, adFormat);
         if (adView == null) {
             e(adFormat.getLabel() + " does not exist");
@@ -941,44 +990,14 @@ public class AppLovinMAX
         }
     }
 
-    // Utility Methods
-
     private void logInvalidAdFormat(MaxAdFormat adFormat) {
         logStackTrace(new IllegalStateException("invalid ad format: " + adFormat));
     }
 
+    // AD INFO
+
     private void logStackTrace(Exception e) {
         e(Log.getStackTraceString(e));
-    }
-
-    private static void logUninitializedAccessError(final String callingMethod) {
-        logUninitializedAccessError(callingMethod, null);
-    }
-
-    private static void logUninitializedAccessError(final String callingMethod, @Nullable final Result result) {
-        final String message = "ERROR: Failed to execute " + callingMethod + "() - please ensure the AppLovin MAX Flutter plugin has been initialized by calling 'AppLovinMAX.initialize(...);'!";
-
-        if (result == null) {
-            e(message);
-            return;
-        }
-
-        result.error(TAG, message, null);
-    }
-
-    public static void d(final String message) {
-        final String fullMessage = "[" + TAG + "] " + message;
-        Log.d(SDK_TAG, fullMessage);
-    }
-
-    public static void w(final String message) {
-        final String fullMessage = "[" + TAG + "] " + message;
-        Log.w(SDK_TAG, fullMessage);
-    }
-
-    public static void e(final String message) {
-        final String fullMessage = "[" + TAG + "] " + message;
-        Log.e(SDK_TAG, fullMessage);
     }
 
     // NOTE: Do not update signature as some integrations depend on it via Java reflection
@@ -1009,6 +1028,8 @@ public class AppLovinMAX
         return result;
     }
 
+    // AD WATERFALL INFO
+
     // NOTE: Do not update signature as some integrations depend on it via Java reflection
     private MaxAppOpenAd retrieveAppOpenAd(String adUnitId) {
         MaxAppOpenAd result = mAppOpenAds.get(adUnitId);
@@ -1027,6 +1048,8 @@ public class AppLovinMAX
     private MaxAdView retrieveAdView(String adUnitId, MaxAdFormat adFormat) {
         return retrieveAdView(adUnitId, adFormat, null);
     }
+
+    // Amazon
 
     public MaxAdView retrieveAdView(String adUnitId, MaxAdFormat adFormat, String adViewPosition) {
         MaxAdView result = mAdViews.get(adUnitId);
@@ -1108,8 +1131,6 @@ public class AppLovinMAX
         relativeLayout.setGravity(gravity);
     }
 
-    // AD INFO
-
     public Map<String, Object> getAdInfo(final MaxAd ad) {
         Map<String, Object> adInfo = new HashMap<>(7);
         adInfo.put("adUnitId", ad.getAdUnitId());
@@ -1144,7 +1165,7 @@ public class AppLovinMAX
         return info;
     }
 
-    // AD WATERFALL INFO
+    // Utility Methods
 
     private Map<String, Object> createAdWaterfallInfo(final MaxAdWaterfallInfo waterfallInfo) {
         Map<String, Object> waterfallInfoObject = new HashMap<>();
@@ -1199,8 +1220,6 @@ public class AppLovinMAX
         return networkResponseObject;
     }
 
-    // Amazon
-
     public void setAmazonBannerResult(final Object result, final String adUnitId) {
         setAmazonResult(result, adUnitId, MaxAdFormat.BANNER);
     }
@@ -1216,6 +1235,7 @@ public class AppLovinMAX
     public void setAmazonRewardedResult(final Object result, final String adUnitId) {
         setAmazonResult(result, adUnitId, MaxAdFormat.REWARDED);
     }
+    // Flutter channel
 
     private void setAmazonResult(final Object result, final String adUnitId, final MaxAdFormat adFormat) {
         if (sdk == null) {
@@ -1257,58 +1277,9 @@ public class AppLovinMAX
         return "DTBAdResponse".equalsIgnoreCase(className) ? "amazon_ad_response" : "amazon_ad_error";
     }
 
-    // Utility Methods
-
     public MaxAdFormat getDeviceSpecificBannerAdViewAdFormat() {
         return getDeviceSpecificBannerAdViewAdFormat(applicationContext);
     }
-
-    public static MaxAdFormat getDeviceSpecificBannerAdViewAdFormat(final Context context) {
-        return AppLovinSdkUtils.isTablet(context) ? MaxAdFormat.LEADER : MaxAdFormat.BANNER;
-    }
-
-    protected static class AdViewSize {
-        public final int widthDp;
-        public final int heightDp;
-
-        private AdViewSize(final int widthDp, final int heightDp) {
-            this.widthDp = widthDp;
-            this.heightDp = heightDp;
-        }
-    }
-
-    private static AdViewSize getAdViewSize(final MaxAdFormat format) {
-        if (MaxAdFormat.LEADER == format) {
-            return new AdViewSize(728, 90);
-        } else if (MaxAdFormat.BANNER == format) {
-            return new AdViewSize(320, 50);
-        } else if (MaxAdFormat.MREC == format) {
-            return new AdViewSize(300, 250);
-        } else {
-            throw new IllegalArgumentException("Invalid ad format");
-        }
-    }
-
-    private static ConsentFlowUserGeography getAppLovinConsentFlowUserGeography(final String userGeography) {
-        if (USER_GEOGRAPHY_GDPR.equalsIgnoreCase(userGeography)) {
-            return ConsentFlowUserGeography.GDPR;
-        } else if (USER_GEOGRAPHY_OTHER.equalsIgnoreCase(userGeography)) {
-            return ConsentFlowUserGeography.OTHER;
-        }
-
-        return ConsentFlowUserGeography.UNKNOWN;
-    }
-
-    private static String getRawAppLovinConsentFlowUserGeography(final ConsentFlowUserGeography userGeography) {
-        if (ConsentFlowUserGeography.GDPR == userGeography) {
-            return USER_GEOGRAPHY_GDPR;
-        } else if (ConsentFlowUserGeography.OTHER == userGeography) {
-            return USER_GEOGRAPHY_OTHER;
-        }
-
-        return USER_GEOGRAPHY_UNKNOWN;
-    }
-    // Flutter channel
 
     @Override
     public void onMethodCall(@NonNull MethodCall call, @NonNull Result result) {
@@ -1333,13 +1304,6 @@ public class AppLovinMAX
             result.success(null);
         } else if ("hasUserConsent".equals(call.method)) {
             hasUserConsent(result);
-        } else if ("setIsAgeRestrictedUser".equals(call.method)) {
-            boolean isAgeRestrictedUser = call.argument("value");
-            setIsAgeRestrictedUser(isAgeRestrictedUser);
-
-            result.success(null);
-        } else if ("isAgeRestrictedUser".equals(call.method)) {
-            isAgeRestrictedUser(result);
         } else if ("setDoNotSell".equals(call.method)) {
             boolean isDoNotSell = call.argument("value");
             setDoNotSell(isDoNotSell);
@@ -1592,7 +1556,48 @@ public class AppLovinMAX
             setAppOpenAdExtraParameter(adUnitId, key, value);
 
             result.success(null);
-        } else if ("addSegment".equals(call.method)) {
+         }
+        else if ( "preloadWidgetAdView".equals( call.method ) )
+        {
+            String adUnitId = call.argument( "ad_unit_id" );
+            String adFormatStr = call.argument( "ad_format" );
+            String placement = call.argument( "placement" );
+            String customData = call.argument( "custom_data" );
+            Map<String, Object> extraParameters = call.argument( "extra_parameters" );
+            Map<String, Object> localExtraParameters = call.argument( "local_extra_parameters" );
+
+            MaxAdFormat adFormat;
+
+            if ( MaxAdFormat.BANNER.getLabel().equalsIgnoreCase( adFormatStr ) )
+            {
+                adFormat = AppLovinMAX.getDeviceSpecificBannerAdViewAdFormat( applicationContext );
+            }
+            else if ( MaxAdFormat.MREC.getLabel().equalsIgnoreCase( adFormatStr ) )
+            {
+                adFormat = MaxAdFormat.MREC;
+            }
+            else
+            {
+                result.error( TAG, "Invalid ad format: " + adFormatStr, null );
+                return;
+            }
+
+            AppLovinMAXAdView.preloadWidgetAdView( adUnitId,
+                    adFormat,
+                    placement,
+                    customData,
+                    extraParameters,
+                    localExtraParameters,
+                    result,
+                    sdk,
+                    applicationContext );
+        }
+        else if ( "destroyWidgetAdView".equals( call.method ) )
+        {
+            String placement = call.argument( "placement" );
+            AppLovinMAXAdView.destroyWidgetAdView( placement, result );
+        }
+        else if ("addSegment".equals(call.method)) {
             Integer key = call.argument("key");
             List<Integer> values = call.argument("values");
             addSegment(key, values);
@@ -1600,31 +1605,6 @@ public class AppLovinMAX
             result.success(null);
         } else if ("getSegments".equals(call.method)) {
             getSegments(result);
-        } else if ("preloadNativeAd1".equals(call.method)) {
-            String adUnitId = call.argument("ad_unit_id");
-            String placement = call.argument("placement");
-            String customData = call.argument("custom_data");
-            preloadNativeAd1(adUnitId, placement, customData);
-        } else if ("preloadNativeAd2".equals(call.method)) {
-            String adUnitId = call.argument("ad_unit_id");
-            String placement = call.argument("placement");
-            String customData = call.argument("custom_data");
-            preloadNativeAd2(adUnitId, placement, customData);
-        } else if ("preloadNativeAd3".equals(call.method)) {
-            String adUnitId = call.argument("ad_unit_id");
-            String placement = call.argument("placement");
-            String customData = call.argument("custom_data");
-            preloadNativeAd3(adUnitId, placement, customData);
-        } else if ("preloadNativeAd4".equals(call.method)) {
-            String adUnitId = call.argument("ad_unit_id");
-            String placement = call.argument("placement");
-            String customData = call.argument("custom_data");
-            preloadNativeAd4(adUnitId, placement, customData);
-        } else if ("preloadNativeAd5".equals(call.method)) {
-            String adUnitId = call.argument("ad_unit_id");
-            String placement = call.argument("placement");
-            String customData = call.argument("custom_data");
-            preloadNativeAd5(adUnitId, placement, customData);
         } else if ("preloadNativeAd".equals(call.method)) {
             String adUnitId = call.argument("ad_unit_id");
             String placement = call.argument("placement");
@@ -1634,6 +1614,8 @@ public class AppLovinMAX
             result.notImplemented();
         }
     }
+
+    // Activity Lifecycle Listener
 
     public void fireCallback(final String name, final MaxAd ad, final MethodChannel channel) {
         fireCallback(name, getAdInfo(ad), channel);
@@ -1646,8 +1628,6 @@ public class AppLovinMAX
     public void fireCallback(final String name, final Map<String, Object> params, final MethodChannel channel) {
         channel.invokeMethod(name, params);
     }
-
-    // Activity Lifecycle Listener
 
     @Override
     public void onAttachedToActivity(@NonNull final ActivityPluginBinding binding) {
@@ -1678,255 +1658,79 @@ public class AppLovinMAX
         return (lastActivityPluginBinding != null) ? lastActivityPluginBinding.getActivity() : null;
     }
 
-    @Nullable
-    static public MaxNativeAdLoader adLoader1;
-    @Nullable
-    static public MaxAd nativeAd1;
-    private int retryLoadAd1 = 0;
-
-    public void preloadNativeAd1(String adUnitId, String placement, String customData) {
-        adLoader1 = new MaxNativeAdLoader(adUnitId, sdk, applicationContext);
-        adLoader1.setNativeAdListener(new PreloadAdListener1());
-
-        adLoader1.setPlacement(placement);
-        adLoader1.setCustomData(customData);
-
-        adLoader1.loadAd();
-    }
-
-    private class PreloadAdListener1 extends MaxNativeAdListener {
-        @Override
-        public void onNativeAdLoaded(@Nullable final MaxNativeAdView nativeAdView, @NonNull final MaxAd ad) {
-            AppLovinMAX.d("Native ad loaded: " + ad);
-            if (nativeAdView != null) {
-                System.out.println("Native ad is of template type, failing ad load...");
-                return;
-            }
-            nativeAd1 = ad;
-            retryLoadAd1 = 0;
-        }
-
-        @Override
-        public void onNativeAdLoadFailed(@NonNull final String adUnitId, @NonNull final MaxError error) {
-            while (retryLoadAd1 < 4) {
-                adLoader1.loadAd();
-                retryLoadAd1++;
-            }
-        }
-
-        @Override
-        public void onNativeAdClicked(@NonNull final MaxAd ad) {
-            System.out.println("OnNativeAdClickedEvent");
-        }
-    }
-
-    @Nullable
-    static public MaxNativeAdLoader adLoader2;
-    @Nullable
-    static public MaxAd nativeAd2;
-    private int retryLoadAd2 = 0;
-
-    public void preloadNativeAd2(String adUnitId, String placement, String customData) {
-        adLoader2 = new MaxNativeAdLoader(adUnitId, sdk, applicationContext);
-        adLoader2.setNativeAdListener(new PreloadAdListener2());
-
-        adLoader2.setPlacement(placement);
-        adLoader2.setCustomData(customData);
-
-        adLoader2.loadAd();
-    }
-
-    private class PreloadAdListener2 extends MaxNativeAdListener {
-        @Override
-        public void onNativeAdLoaded(@Nullable final MaxNativeAdView nativeAdView, @NonNull final MaxAd ad) {
-            AppLovinMAX.d("Native ad loaded: " + ad);
-            if (nativeAdView != null) {
-                System.out.println("Native ad is of template type, failing ad load...");
-                return;
-            }
-            nativeAd2 = ad;
-            retryLoadAd2 = 0;
-        }
-
-        @Override
-        public void onNativeAdLoadFailed(@NonNull final String adUnitId, @NonNull final MaxError error) {
-            while (retryLoadAd2 < 4) {
-                adLoader2.loadAd();
-                retryLoadAd2++;
-            }
-        }
-
-        @Override
-        public void onNativeAdClicked(@NonNull final MaxAd ad) {
-            System.out.println("OnNativeAdClickedEvent");
-        }
-    }
-
-    @Nullable
-    static public MaxNativeAdLoader adLoader3;
-    @Nullable
-    static public MaxAd nativeAd3;
-    private int retryLoadAd3 = 0;
-
-    public void preloadNativeAd3(String adUnitId, String placement, String customData) {
-        adLoader3 = new MaxNativeAdLoader(adUnitId, sdk, applicationContext);
-        adLoader3.setNativeAdListener(new PreloadAdListener3());
-
-        adLoader3.setPlacement(placement);
-        adLoader3.setCustomData(customData);
-
-        adLoader3.loadAd();
-    }
-
-    private class PreloadAdListener3 extends MaxNativeAdListener {
-        @Override
-        public void onNativeAdLoaded(@Nullable final MaxNativeAdView nativeAdView, @NonNull final MaxAd ad) {
-            AppLovinMAX.d("Native ad loaded: " + ad);
-            if (nativeAdView != null) {
-                System.out.println("Native ad is of template type, failing ad load...");
-                return;
-            }
-            nativeAd3 = ad;
-            retryLoadAd3 = 0;
-        }
-
-        @Override
-        public void onNativeAdLoadFailed(@NonNull final String adUnitId, @NonNull final MaxError error) {
-            while (retryLoadAd3 < 4) {
-                adLoader3.loadAd();
-                retryLoadAd3++;
-            }
-        }
-
-        @Override
-        public void onNativeAdClicked(@NonNull final MaxAd ad) {
-            System.out.println("OnNativeAdClickedEvent");
-        }
-    }
-
-    @Nullable
-    static public MaxNativeAdLoader adLoader4;
-    @Nullable
-    static public MaxAd nativeAd4;
-    private int retryLoadAd4 = 0;
-
-    public void preloadNativeAd4(String adUnitId, String placement, String customData) {
-        adLoader4 = new MaxNativeAdLoader(adUnitId, sdk, applicationContext);
-        adLoader4.setNativeAdListener(new PreloadAdListener4());
-
-        adLoader4.setPlacement(placement);
-        adLoader4.setCustomData(customData);
-
-        adLoader4.loadAd();
-    }
-
-    private class PreloadAdListener4 extends MaxNativeAdListener {
-        @Override
-        public void onNativeAdLoaded(@Nullable final MaxNativeAdView nativeAdView, @NonNull final MaxAd ad) {
-            AppLovinMAX.d("Native ad loaded: " + ad);
-            if (nativeAdView != null) {
-                System.out.println("Native ad is of template type, failing ad load...");
-                return;
-            }
-            nativeAd4 = ad;
-            retryLoadAd4 = 0;
-        }
-
-        @Override
-        public void onNativeAdLoadFailed(@NonNull final String adUnitId, @NonNull final MaxError error) {
-            while (retryLoadAd4 < 4) {
-                adLoader4.loadAd();
-                retryLoadAd4++;
-            }
-        }
-
-        @Override
-        public void onNativeAdClicked(@NonNull final MaxAd ad) {
-            System.out.println("OnNativeAdClickedEvent");
-        }
-    }
-
-    @Nullable
-    static public MaxNativeAdLoader adLoader5;
-    @Nullable
-    static public MaxAd nativeAd5;
-    private int retryLoadAd5 = 0;
-
-    public void preloadNativeAd5(String adUnitId, String placement, String customData) {
-        adLoader5 = new MaxNativeAdLoader(adUnitId, sdk, applicationContext);
-        adLoader5.setNativeAdListener(new PreloadAdListener5());
-
-        adLoader5.setPlacement(placement);
-        adLoader5.setCustomData(customData);
-
-        adLoader5.loadAd();
-    }
-
-    private class PreloadAdListener5 extends MaxNativeAdListener {
-        @Override
-        public void onNativeAdLoaded(@Nullable final MaxNativeAdView nativeAdView, @NonNull final MaxAd ad) {
-            AppLovinMAX.d("Native ad loaded: " + ad);
-            if (nativeAdView != null) {
-                System.out.println("Native ad is of template type, failing ad load...");
-                return;
-            }
-            nativeAd5 = ad;
-            retryLoadAd5 = 0;
-        }
-
-        @Override
-        public void onNativeAdLoadFailed(@NonNull final String adUnitId, @NonNull final MaxError error) {
-            while (retryLoadAd5 < 4) {
-                adLoader5.loadAd();
-                retryLoadAd5++;
-            }
-        }
-
-        @Override
-        public void onNativeAdClicked(@NonNull final MaxAd ad) {
-            System.out.println("OnNativeAdClickedEvent");
-        }
-    }
-
-
-    @Nullable
-    static public MaxNativeAdLoader adLoader;
-    @Nullable
-    static public MaxAd nativeAd;
-    static public String adPlacement;
-    private int retryLoadNative = 0;
-
     public void preloadNativeAdWithPlacement(String adUnitId, String placement, String customData) {
-        adLoader = new MaxNativeAdLoader(adUnitId, sdk, applicationContext);
-        adLoader.setNativeAdListener(new PreloadNativeAdListener());
-
+        MaxNativeAdLoader adLoader = new MaxNativeAdLoader(adUnitId, sdk, applicationContext);
+        adLoader.setNativeAdListener(new PreloadNativeAdListener(placement));
         adLoader.setPlacement(placement);
         adLoader.setCustomData(customData);
-        adPlacement = placement;
-
         adLoader.loadAd();
+        nativeAdManager.setAdLoaderAtPlacement(placement, adLoader);
+    }
+
+    Map<String, Object> getAdLoadInfo(final MaxNativeAd ad) {
+        Map<String, Object> nativeAdInfo = new HashMap<>(10);
+
+        nativeAdInfo.put("title", ad.getTitle());
+        nativeAdInfo.put("advertiser", ad.getAdvertiser());
+        nativeAdInfo.put("body", ad.getBody());
+        nativeAdInfo.put("callToAction", ad.getCallToAction());
+
+        if (ad.getStarRating() != null) {
+            nativeAdInfo.put("starRating", ad.getStarRating());
+        }
+
+        // The aspect ratio can be 0.0f when it is not provided by the network.
+        if (ad.getMediaContentAspectRatio() > 0) {
+            nativeAdInfo.put("mediaContentAspectRatio", ad.getMediaContentAspectRatio());
+        }
+
+        nativeAdInfo.put("isIconImageAvailable", (ad.getIcon() != null));
+        nativeAdInfo.put("isOptionsViewAvailable", (ad.getOptionsView() != null));
+        nativeAdInfo.put("isMediaViewAvailable", (ad.getMediaView() != null));
+
+        Map<String, Object> adInfo = AppLovinMAX.getInstance().getAdInfo(nativeAd);
+        adInfo.put("nativeAd", nativeAdInfo);
+        return nativeAdInfo;
+    }
+
+    protected static class AdViewSize {
+        public final int widthDp;
+        public final int heightDp;
+
+        private AdViewSize(final int widthDp, final int heightDp) {
+            this.widthDp = widthDp;
+            this.heightDp = heightDp;
+        }
     }
 
     private class PreloadNativeAdListener extends MaxNativeAdListener {
+        String placement;
+
+        PreloadNativeAdListener(String placement) {
+            this.placement = placement;
+        }
+
         @Override
         public void onNativeAdLoaded(@Nullable final MaxNativeAdView nativeAdView, @NonNull final MaxAd ad) {
             AppLovinMAX.d("Native ad loaded: " + ad);
-            // Log a warning if it is a template native ad returned - as our plugin will be responsible for re-rendering the native ad's assets
-            if (nativeAdView != null) {
-                System.out.println("Native ad is of template type, failing ad load...");
-                return;
-            }
-            nativeAd = ad;
-            retryLoadNative = 0;
+//            if (nativeAdView != null) {
+//                System.out.println("Native ad is of template type, failing ad load...");
+//                return;
+//            }
+            nativeAdManager.setNativeAdAtPlacement(placement, ad);
+
+            Map<String, Object> adInfo = getAdInfo(ad);
+            adInfo.put("placement", placement);
+            fireCallback("OnPreloadNativeAdWithPlacementLoadedEvent", adInfo, sharedChannel);
+
         }
 
         @Override
         public void onNativeAdLoadFailed(@NonNull final String adUnitId, @NonNull final MaxError error) {
             System.out.println("Failed to load native ad for Ad Unit ID " + adUnitId + " with error: " + error);
-            while (retryLoadNative < 4) {
-                adLoader.loadAd();
-                retryLoadNative++;
-            }
+            Map<String, Object> params = getAdLoadFailedInfo(adUnitId, error);
+            params.put("placement", placement);
+            fireCallback("OnPreloadNativeAdWithPlacementFailEvent", params, sharedChannel);
         }
 
         @Override
@@ -1934,5 +1738,31 @@ public class AppLovinMAX
             System.out.println("OnNativeAdClickedEvent");
         }
     }
+}
 
+class NativeAdManager {
+    private final HashMap<String, MaxAd> nativeAds;
+
+    private final HashMap<String, MaxNativeAdLoader> adLoaders;
+
+    NativeAdManager() {
+        this.nativeAds = new HashMap<>();
+        this.adLoaders = new HashMap<>();
+    }
+
+    public void setAdLoaderAtPlacement(String placement, MaxNativeAdLoader adLoader) {
+        adLoaders.put(placement, adLoader);
+    }
+
+    public MaxNativeAdLoader getAdLoaderAtPlacement(String placement) {
+        return adLoaders.get(placement);
+    }
+
+    public void setNativeAdAtPlacement(String placement, MaxAd ad) {
+        nativeAds.put(placement, ad);
+    }
+
+    public MaxAd getNativeAdAtPlacement(String placement) {
+        return nativeAds.get(placement);
+    }
 }

@@ -49,7 +49,7 @@ class MaxNativeAdView extends StatefulWidget {
       this.height = double.infinity,
       this.controller,
       required this.child,
-      this.preloadNativeAdName})
+      this.preloadNativeIndex})
       : super(key: key);
 
   /// A string value representing the ad unit ID to load ads for.
@@ -82,7 +82,7 @@ class MaxNativeAdView extends StatefulWidget {
   /// The [child] contained by the MaxNativeAdView container.
   final Widget child;
 
-  final String? preloadNativeAdName;
+  final int? preloadNativeIndex;
 
   /// @nodoc
   @override
@@ -142,7 +142,7 @@ class _MaxNativeAdViewState extends State<MaxNativeAdView> {
                   "placement": widget.placement,
                   "extra_parameters": widget.extraParameters,
                   "local_extra_parameters": widget.localExtraParameters,
-                  "native_ad_name": widget.preloadNativeAdName
+                  "preload_native_index": widget.preloadNativeIndex
                 },
                 creationParamsCodec: const StandardMessageCodec(),
                 onPlatformViewCreated: _onMaxNativeAdViewCreated,

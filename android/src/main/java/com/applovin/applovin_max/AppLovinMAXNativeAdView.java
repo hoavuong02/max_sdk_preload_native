@@ -9,6 +9,9 @@ import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.RelativeLayout;
 
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+
 import com.applovin.mediation.MaxAd;
 import com.applovin.mediation.MaxAdRevenueListener;
 import com.applovin.mediation.MaxError;
@@ -23,11 +26,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
-
-import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
 
 import io.flutter.plugin.common.BinaryMessenger;
 import io.flutter.plugin.common.MethodCall;
@@ -45,13 +44,7 @@ public class AppLovinMAXNativeAdView implements PlatformView, MaxAdRevenueListen
     private final Context context;
     private final MethodChannel channel;
     private final AppLovinSdk sdk;
-
-    @Nullable
-    private MaxNativeAdLoader adLoader;
-    @Nullable
-    private MaxAd nativeAd;
     private final AtomicBoolean isLoading = new AtomicBoolean(); // Guard against repeated ad loads
-
     private final String adUnitId;
     @Nullable
     private final String placement;
@@ -61,8 +54,12 @@ public class AppLovinMAXNativeAdView implements PlatformView, MaxAdRevenueListen
     private final Map<String, Object> extraParameters;
     @Nullable
     private final Map<String, Object> localExtraParameters;
-
     private final FrameLayout nativeAdView;
+    private final List<View> clickableViews = new ArrayList<>();
+    @Nullable
+    private MaxNativeAdLoader adLoader;
+    @Nullable
+    private MaxAd nativeAd;
     @Nullable
     private View titleView;
     @Nullable
@@ -78,9 +75,7 @@ public class AppLovinMAXNativeAdView implements PlatformView, MaxAdRevenueListen
     @Nullable
     private RelativeLayout mediaViewContainer;
 
-    private final List<View> clickableViews = new ArrayList<>();
-
-    public AppLovinMAXNativeAdView(final int viewId, final String adUnitId, @Nullable final String placement, @Nullable final String customData, @Nullable final Map<String, Object> extraParameters, @Nullable final Map<String, Object> localExtraParameters, final BinaryMessenger messenger, final AppLovinSdk sdk, final Context context, @Nullable final String nativeAdName) {
+    public AppLovinMAXNativeAdView(final int viewId, final String adUnitId, @Nullable final String placement, @Nullable final String customData, @Nullable final Map<String, Object> extraParameters, @Nullable final Map<String, Object> localExtraParameters, final BinaryMessenger messenger, final AppLovinSdk sdk, final Context context) {
         this.adUnitId = adUnitId;
         this.placement = placement;
         this.customData = customData;
@@ -91,7 +86,6 @@ public class AppLovinMAXNativeAdView implements PlatformView, MaxAdRevenueListen
         String uniqueChannelName = "applovin_max/nativeadview_" + viewId;
         channel = new MethodChannel(messenger, uniqueChannelName);
         channel.setMethodCallHandler((call, result) -> {
-
             if ("addTitleView".equals(call.method)) {
                 if (nativeAd != null) addTitleView(call, nativeAd);
                 result.success(null);
@@ -125,94 +119,17 @@ public class AppLovinMAXNativeAdView implements PlatformView, MaxAdRevenueListen
         });
 
         nativeAdView = new FrameLayout(context);
-        if (Objects.equals(nativeAdName, PreloadNativeAdName.NATIVE1.getName())) {
-            if (AppLovinMAX.adLoader1 != null && AppLovinMAX.nativeAd1 != null) {
-                Log.d("preload native view", "PreloadNativeAdName.NATIVE1");
-                adLoader = AppLovinMAX.adLoader1;
-                nativeAd = AppLovinMAX.nativeAd1;
-                adLoader.setRevenueListener(this);
-                if (AppLovinMAX.nativeAd1.getNativeAd() != null) {
-                    sendAdLoadedReactNativeEventForAd(AppLovinMAX.nativeAd1.getNativeAd());
-                }
-                AppLovinMAX.adLoader1 = null;
-                AppLovinMAX.nativeAd1 = null;
-            } else {
-                Log.d("preload native view", "call loadAd method");
-                loadAd();
-            }
-        } else if (Objects.equals(nativeAdName, PreloadNativeAdName.NATIVE2.getName())) {
-            if (AppLovinMAX.adLoader2 != null && AppLovinMAX.nativeAd2 != null) {
-                Log.d("preload native view", "PreloadNativeAdName.NATIVE2");
-                adLoader = AppLovinMAX.adLoader2;
-                nativeAd = AppLovinMAX.nativeAd2;
-                adLoader.setRevenueListener(this);
-                if (AppLovinMAX.nativeAd2.getNativeAd() != null) {
-                    sendAdLoadedReactNativeEventForAd(AppLovinMAX.nativeAd2.getNativeAd());
-                }
-                AppLovinMAX.adLoader2 = null;
-                AppLovinMAX.nativeAd2 = null;
-            } else {
-                Log.d("preload native view", "call loadAd method");
-                loadAd();
-            }
-        } else if (Objects.equals(nativeAdName, PreloadNativeAdName.NATIVE3.getName())) {
-            if (AppLovinMAX.adLoader3 != null && AppLovinMAX.nativeAd3 != null) {
-                Log.d("preload native view", "PreloadNativeAdName.NATIVE3");
-                adLoader = AppLovinMAX.adLoader3;
-                nativeAd = AppLovinMAX.nativeAd3;
-                adLoader.setRevenueListener(this);
-                if (AppLovinMAX.nativeAd3.getNativeAd() != null) {
-                    sendAdLoadedReactNativeEventForAd(AppLovinMAX.nativeAd3.getNativeAd());
-                }
-                AppLovinMAX.adLoader3 = null;
-                AppLovinMAX.nativeAd3 = null;
-            } else {
-                Log.d("preload native view", "call loadAd method");
-                loadAd();
-            }
-        } else if (Objects.equals(nativeAdName, PreloadNativeAdName.NATIVE4.getName())) {
-            if (AppLovinMAX.adLoader4 != null && AppLovinMAX.nativeAd4 != null) {
-                Log.d("preload native view", "PreloadNativeAdName.NATIVE4");
-                adLoader = AppLovinMAX.adLoader4;
-                nativeAd = AppLovinMAX.nativeAd4;
-                adLoader.setRevenueListener(this);
-                if (AppLovinMAX.nativeAd4.getNativeAd() != null) {
-                    sendAdLoadedReactNativeEventForAd(AppLovinMAX.nativeAd4.getNativeAd());
-                }
-                AppLovinMAX.adLoader4 = null;
-                AppLovinMAX.nativeAd4 = null;
-            } else {
-                Log.d("preload native view", "call loadAd method");
-                loadAd();
-            }
-        } else if (Objects.equals(nativeAdName, PreloadNativeAdName.NATIVE5.getName())) {
-            if (AppLovinMAX.adLoader5 != null && AppLovinMAX.nativeAd5 != null) {
-                Log.d("preload native view", "PreloadNativeAdName.NATIVE5");
-                adLoader = AppLovinMAX.adLoader5;
-                nativeAd = AppLovinMAX.nativeAd5;
-                adLoader.setRevenueListener(this);
-                if (AppLovinMAX.nativeAd5.getNativeAd() != null) {
-                    sendAdLoadedReactNativeEventForAd(AppLovinMAX.nativeAd5.getNativeAd());
-                }
-                AppLovinMAX.adLoader5 = null;
-                AppLovinMAX.nativeAd5 = null;
-            } else {
-                Log.d("preload native view", "call loadAd method");
-                loadAd();
-            }
-        } else if (AppLovinMAX.adLoader != null && AppLovinMAX.nativeAd != null && Objects.equals(AppLovinMAX.adPlacement, placement)) {
-            Log.d("preload native view", "show preload");
-            adLoader = AppLovinMAX.adLoader;
-            nativeAd = AppLovinMAX.nativeAd;
+        nativeAd = AppLovinMAX.nativeAdManager.getNativeAdAtPlacement(placement);
+        if (nativeAd != null) {
+            adLoader = AppLovinMAX.nativeAdManager.getAdLoaderAtPlacement(placement);
             adLoader.setRevenueListener(this);
-            if (AppLovinMAX.nativeAd.getNativeAd() != null) {
-                sendAdLoadedReactNativeEventForAd(AppLovinMAX.nativeAd.getNativeAd());
+            if (nativeAd.getNativeAd() != null) {
+                sendAdLoadedReactNativeEventForAd(nativeAd.getNativeAd());
             }
-            AppLovinMAX.adLoader = null;
-            AppLovinMAX.nativeAd = null;
-            AppLovinMAX.adPlacement = null;
+            AppLovinMAX.nativeAdManager.setAdLoaderAtPlacement(placement, null);
+            AppLovinMAX.nativeAdManager.setNativeAdAtPlacement(placement, null);
         } else {
-            Log.d("preload native view", "load new");
+            Log.d("preload native view", "call loadAd method");
             loadAd();
         }
     }
@@ -300,44 +217,12 @@ public class AppLovinMAXNativeAdView implements PlatformView, MaxAdRevenueListen
 
     /// Ad Loader Listener
 
-    private class NativeAdListener extends MaxNativeAdListener {
-        @Override
-        public void onNativeAdLoaded(@Nullable final MaxNativeAdView nativeAdView, @NonNull final MaxAd ad) {
-            AppLovinMAX.d("Native ad loaded: " + ad);
-
-            // Log a warning if it is a template native ad returned - as our plugin will be responsible for re-rendering the native ad's assets
-            if (nativeAdView != null) {
-                handleAdLoadFailed("Native ad is of template type, failing ad load...", null);
-
-                return;
-            }
-
-            maybeDestroyCurrentAd();
-
-            nativeAd = ad;
-
-            sendAdLoadedReactNativeEventForAd(ad.getNativeAd());
-        }
-
-        @Override
-        public void onNativeAdLoadFailed(@NonNull final String adUnitId, @NonNull final MaxError error) {
-            handleAdLoadFailed("Failed to load native ad for Ad Unit ID " + adUnitId + " with error: " + error, error);
-        }
-
-        @Override
-        public void onNativeAdClicked(@NonNull final MaxAd ad) {
-            sendEvent("OnNativeAdClickedEvent", ad);
-        }
-    }
-
-    /// Ad Revenue Listener
-
     @Override
     public void onAdRevenuePaid(@NonNull final MaxAd ad) {
         sendEvent("OnNativeAdRevenuePaidEvent", ad);
     }
 
-    /// Native Ad Component Methods
+    /// Ad Revenue Listener
 
     private void addTitleView(final MethodCall call, final MaxAd ad) {
         if (ad == null) return;
@@ -354,6 +239,8 @@ public class AppLovinMAXNativeAdView implements PlatformView, MaxAdRevenueListen
 
         updateViewLayout(nativeAdView, titleView, getRect(call));
     }
+
+    /// Native Ad Component Methods
 
     private void addAdvertiserView(final MethodCall call, final MaxAd ad) {
         if (ad == null) return;
@@ -504,11 +391,11 @@ public class AppLovinMAXNativeAdView implements PlatformView, MaxAdRevenueListen
         return new Rect(x, y, x + width, y + height);
     }
 
-    /// Utility Methods
-
     private void sendEvent(final String event, final MaxAd ad) {
         AppLovinMAX.getInstance().fireCallback(event, ad, channel);
     }
+
+    /// Utility Methods
 
     private void handleAdLoadFailed(final String message, @Nullable final MaxError error) {
         isLoading.set(false);
@@ -562,5 +449,35 @@ public class AppLovinMAXNativeAdView implements PlatformView, MaxAdRevenueListen
         }
 
         clickableViews.clear();
+    }
+
+    private class NativeAdListener extends MaxNativeAdListener {
+        @Override
+        public void onNativeAdLoaded(@Nullable final MaxNativeAdView nativeAdView, @NonNull final MaxAd ad) {
+            AppLovinMAX.d("Native ad loaded: " + ad);
+
+            // Log a warning if it is a template native ad returned - as our plugin will be responsible for re-rendering the native ad's assets
+            if (nativeAdView != null) {
+                handleAdLoadFailed("Native ad is of template type, failing ad load...", null);
+
+                return;
+            }
+
+            maybeDestroyCurrentAd();
+
+            nativeAd = ad;
+
+            sendAdLoadedReactNativeEventForAd(ad.getNativeAd());
+        }
+
+        @Override
+        public void onNativeAdLoadFailed(@NonNull final String adUnitId, @NonNull final MaxError error) {
+            handleAdLoadFailed("Failed to load native ad for Ad Unit ID " + adUnitId + " with error: " + error, error);
+        }
+
+        @Override
+        public void onNativeAdClicked(@NonNull final MaxAd ad) {
+            sendEvent("OnNativeAdClickedEvent", ad);
+        }
     }
 }

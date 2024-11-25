@@ -60,7 +60,7 @@ class NativeAdViewState extends State<NativeAdView> {
             child: MaxNativeAdView(
               adUnitId: widget.adUnitId,
               controller: _nativeAdViewController,
-              preloadNativeAdName: "native1",
+              preloadNativeIndex: 1,
               listener: NativeAdListener(onAdLoadedCallback: (ad) {
                 logStatus('Native ad loaded from ${ad.networkName}');
                 setState(() {
