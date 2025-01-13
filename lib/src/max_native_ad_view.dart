@@ -441,12 +441,19 @@ class MaxNativeAdCallToActionView extends StatelessWidget {
   /// loader provides a CTA button text.
   const MaxNativeAdCallToActionView({
     super.key,
-    this.style,
+    this.decoration,
+    this.textStyle,
+    this.textAlign,
+    this.textOverflow,
+    this.padding,
   });
 
   /// The button style to apply.
-  final ButtonStyle? style;
-
+  final BoxDecoration? decoration;
+  final TextStyle? textStyle;
+  final TextAlign? textAlign;
+  final TextOverflow? textOverflow;
+  final EdgeInsets? padding;
   @override
   Widget build(BuildContext context) {
     _NativeAdViewScope.of(context)._callToActionViewKey =
@@ -461,16 +468,20 @@ class MaxNativeAdCallToActionView extends StatelessWidget {
         return false;
       },
       child: SizeChangedLayoutNotifier(
-        child: ElevatedButton(
+        child: Container(
+          width: double.infinity,
           key: _NativeAdViewScope.of(context)._callToActionViewKey,
-          style: style,
-          onPressed: () {},
+          decoration: decoration,
+          padding: padding ?? const EdgeInsets.symmetric(vertical: 8),
           child: Text(
             _NativeAdViewScope.of(context)
                     ._nativeAd
                     ?.callToAction
                     ?.toUpperCase() ??
                 '',
+            style: textStyle,
+            textAlign: textAlign ?? TextAlign.center,
+            overflow: textOverflow ?? TextOverflow.ellipsis,
           ),
         ),
       ),
@@ -486,6 +497,7 @@ class MaxNativeAdIconView extends StatelessWidget {
     super.key,
     this.width = double.infinity,
     this.height = double.infinity,
+    this.borderRadius,
   });
 
   /// If non-null, requires the child to have exactly this width.
@@ -493,6 +505,7 @@ class MaxNativeAdIconView extends StatelessWidget {
 
   /// If non-null, requires the child to have exactly this height.
   final double? height;
+  final BorderRadius? borderRadius;
 
   @override
   Widget build(BuildContext context) {
@@ -511,7 +524,8 @@ class MaxNativeAdIconView extends StatelessWidget {
           key: _NativeAdViewScope.of(context)._iconViewKey,
           width: width,
           height: height,
-          color: Colors.transparent,
+          decoration: BoxDecoration(
+              color: Colors.transparent, borderRadius: borderRadius),
         ),
       ),
     );

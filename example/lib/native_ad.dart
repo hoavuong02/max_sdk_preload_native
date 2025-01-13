@@ -145,13 +145,9 @@ class NativeAdViewState extends State<NativeAdView> {
                     const SizedBox(
                       width: double.infinity,
                       child: MaxNativeAdCallToActionView(
-                        style: ButtonStyle(
-                          backgroundColor:
-                              MaterialStatePropertyAll<Color>(Colors.white),
-                          textStyle: MaterialStatePropertyAll<TextStyle>(
-                              TextStyle(
-                                  fontSize: 20, fontWeight: FontWeight.bold)),
-                        ),
+                        decoration: BoxDecoration(color: Colors.white),
+                        textStyle: TextStyle(
+                            fontSize: 20, fontWeight: FontWeight.bold),
                       ),
                     ),
                   ],
